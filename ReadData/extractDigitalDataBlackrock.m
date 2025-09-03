@@ -30,8 +30,10 @@ makeDirectory(folderExtract);
 % Read the NEV file
 
 % Load the appropriate DLL
-dllName = fullfile(removeIfPresent(fileparts(mfilename('fullpath')), ...
-fullfile('ProgramsMAP','CommonPrograms','ReadData')),'SoftwareMAP','NeuroShare','nsNEVLibrary64.dll');
+% dllName = fullfile(removeIfPresent(fileparts(mfilename('fullpath')), ...
+% fullfile('Programs','ProgramsMAP','CommonPrograms','ReadData')),'SoftwareMAP','NeuroShare','nsNEVLibrary64.dll');
+programsFolder = 'C:\Users\SRAY LAB\Documents\MATLAB\Programs';
+dllName = fullfile(programsFolder,'SoftwareMAP','NeuroShare','nsNEVLibrary64.dll');
 
 [nsresult] = ns_SetLibrary(dllName);
 if (nsresult ~= 0);      error('DLL was not found!');                   end
@@ -69,6 +71,11 @@ disp(['Number of digital events: ' num2str(numDigitalEvents)]);
 
 % Get the digital events
 [~,digitalTimeStamps,digitalEvents] = ns_GetEventData(hFile,eventList(digID),1:numDigitalEvents);
+
+% Get digital events from fieldtrip
+% evt = ft_read_event(fullfile(folderIn, fileName));
+% digitalTimeStamps = [evt(:).sample]';
+% digitalEvents = [evt(:).value]';
 
 % Blackrock collects data at 30,000 samples per second. Sometimes a digital
 % code transition takes longer than this, and is counted twice. First we
