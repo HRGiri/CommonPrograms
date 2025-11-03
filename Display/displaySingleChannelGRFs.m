@@ -425,10 +425,12 @@ colormap jet;
             % DeltaPSD
             plot(hDeltaPSDPlots(i),dataOut{i}.freqBL,dataOut{i}.deltaPSD,'color',plotColor);
             hold(hDeltaPSDPlots(i),'on');
+            plot(hDeltaPSDPlots(i),dataOut{i}.freqBL,dataOut{i}.deltaPSD - dataOut{1}.deltaPSD,'color',plotColor); % Change compared to the first protocol
             plot(hDeltaPSDPlots(i),dataOut{i}.freqBL,zeros(1,length(dataOut{i}.freqBL)),'color','k','linestyle','--');
 
             plot(hDeltaPSDPlots(numPlots),dataOut{i}.freqBL,dataOut{i}.deltaPSD,'color',plotColor);
             hold(hDeltaPSDPlots(numPlots),'on');
+            plot(hDeltaPSDPlots(numPlots),dataOut{i}.freqBL,dataOut{i}.deltaPSD - dataOut{1}.deltaPSD,'color',plotColor); % Change compared to the first protocol
         end
         plot(hDeltaPSDPlots(numPlots),dataOut{i}.freqBL,zeros(1,length(dataOut{i}.freqBL)),'color','k','linestyle','--');
 
@@ -475,12 +477,10 @@ colormap jet;
     function holdOn_Callback(source,~)
         holdOnState = get(source,'Value');
         
-        holdOnGivenPlotHandle(plotHandles,holdOnState);
-        holdOnGivenPlotHandle(hTemporalFreqPlot,holdOnState);
-        holdOnGivenPlotHandle(hContrastPlot,holdOnState);
-        holdOnGivenPlotHandle(hOrientationPlot,holdOnState);
-        holdOnGivenPlotHandle(hSpatialFreqPlot,holdOnState);
-        holdOnGivenPlotHandle(hSigmaPlot,holdOnState);
+        holdOnGivenPlotHandle(hSpikePlots,holdOnState);
+        holdOnGivenPlotHandle(hERPPlots,holdOnState);
+        holdOnGivenPlotHandle(hPSDPlots,holdOnState);
+        holdOnGivenPlotHandle(hDeltaPSDPlots,holdOnState);
         
         if holdOnState
             set(hElectrodes,'Nextplot','add');
@@ -495,7 +495,6 @@ colormap jet;
                 for i=1:numRows
                     for j=1:numCols
                         set(plotHandles(i,j),'Nextplot','add');
-
                     end
                 end
             else
@@ -527,7 +526,6 @@ colormap jet;
     end
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 function yLims = getYLims(plotHandles)
 
 [numRows,numCols] = size(plotHandles);

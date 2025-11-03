@@ -503,7 +503,7 @@ colormap jet
             end
             
             if ~isempty(rfMapVals)
-                if (length(aValsUnique)==1) || (length(eValsUnique)==1)
+                if (isscalar(aValsUnique)) || (isscalar(eValsUnique))
                     disp('Not enough data to plot RF center...')
                 else
                     plotRFMaps(hRFMapPlot,hcenterRFMapPlot,rfMapVals,aValsUnique,eValsUnique,plotColor,holdOnState);
@@ -1664,7 +1664,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function outString = getStringFromValues(valsUnique,decimationFactor)
 
-if length(valsUnique)==1
+if isscalar(valsUnique)
     outString = convertNumToStr(valsUnique(1),decimationFactor);
 else
     outString='';

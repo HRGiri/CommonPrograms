@@ -272,6 +272,10 @@ hZMax = uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
     'BackgroundColor', backgroundColor, ...
     'Position',[timingTextWidth+timingBoxWidth 1-9*timingHeight timingBoxWidth timingHeight], ...
     'Style','edit','String','1','FontSize',fontSizeSmall);
+hRemoveERP = uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
+    'BackgroundColor', backgroundColor, ...
+    'Position',[0 1-10*timingHeight 1 timingHeight], ...
+    'Style','togglebutton','String','remove ERP','FontSize',fontSizeMedium);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% Plot Options %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -449,6 +453,7 @@ colormap jet;
         
         blRange = [str2double(get(hBaselineMin,'String')) str2double(get(hBaselineMax,'String'))];
         stRange = [str2double(get(hStimPeriodMin,'String')) str2double(get(hStimPeriodMax,'String'))];
+        removeERPFlag = get(hRemoveERP,'val');
         
         set(hMessage,'String',[num2str(length(goodPos)) ' stimuli found' ]);
         
@@ -468,7 +473,7 @@ colormap jet;
             else
                 channelsStored = analogChannelsStored;
                 [valToPlot,valToPlotBL,xValToPlot]=plotLFPData(plotHandles,channelsStored,goodPos,folderLFP,...
-                    analysisType,timeVals,plotColor,blRange,stRange,gridType,subjectName,gridLayout,referenceChannelString);
+                    analysisType,timeVals,plotColor,blRange,stRange,gridType,subjectName,gridLayout,referenceChannelString,removeERPFlag);
             end
             
             if analysisType<=2 || analysisType>=7 % ERP or spikes, or the TF plots
@@ -609,7 +614,7 @@ end
 end
 % Main function that plots the data
 function [valToPlot,valToPlotBL,xValToPlot]=plotLFPData(plotHandles, channelsStored, goodPosAll, ...
-    folderData, analysisType, timeVals, plotColor,blRange,stRange,gridType,subjectName,gridLayout,referenceChannelString)
+    folderData, analysisType, timeVals, plotColor,blRange,stRange,gridType,subjectName,gridLayout,referenceChannelString,removeERPFlag)
 
 if isempty(goodPosAll)
     disp('No entries for this combination..')
@@ -667,10 +672,16 @@ else
             x = load(fullfile(folderData,referenceChannelString));
             analogData = analogData - x.analogData;
         end
-        
+
+        % Remove ERP if needed
+        signal = analogData(goodPos,:);
+        erp = mean(signal,1);
+        if removeERPFlag
+            signal = signal - repmat(erp,size(signal,1),1);
+        end
+
         if analysisType == 1        % compute ERP
             
-            erp = mean(analogData(goodPos,:),1); %#ok<*NODEF>
             erp = erp - mean(erp(blPos));
             
             %Plot
@@ -685,8 +696,8 @@ else
             
         elseif (analysisType == 3) || (analysisType == 4)
             
-            fftBL = abs(fft(analogData(goodPos,blPos),[],2));
-            fftST = abs(fft(analogData(goodPos,stPos),[],2));
+            fftBL = abs(fft(signal(:,blPos),[],2));
+            fftST = abs(fft(signal(:,stPos),[],2));
             
             if analysisType == 3
                 plot(plotHandles(row,column),xsBL,log10(mean(fftBL)),'g');
@@ -713,8 +724,6 @@ else
             end
             
         elseif (analysisType == 5) || (analysisType == 6)
-            
-            erp = mean(analogData(goodPos,:),1); %#ok<*NODEF>
             
             fftERPBL = abs(fft(erp(blPos)));
             fftERPST = abs(fft(erp(stPos)));
@@ -746,7 +755,7 @@ else
             
         elseif (analysisType == 7) || (analysisType == 8) % TF and deltaTF plots - use multitaper analysis using Chronux
             
-            [S,timeTF,freqTF] = mtspecgramc(analogData(goodPos,:)',movingwin,params);
+            [S,timeTF,freqTF] = mtspecgramc(signal',movingwin,params);
             xValToPlot = timeTF+timeVals(1)-1/Fs;
             if (analysisType==7)
                 pcolor(plotHandles(row,column),xValToPlot,freqTF,log10(S'));
@@ -894,7 +903,7 @@ for i=1:length(channelsStored)
     % get position
     [row,column] = electrodePositionOnGrid(channelNum,gridType,subjectName,gridLayout);
     
-    tmpAxisVals = caxis(plotHandles(row,column));
+    tmpAxisVals = clim(plotHandles(row,column));
     if tmpAxisVals(1) < zMin
         zMin = tmpAxisVals(1);
     end
@@ -946,7 +955,7 @@ function rescaleZPlots(plotHandles,caxisLims)
 
 for i=1:numRow
     for j=1:numCol
-        caxis(plotHandles(i,j),caxisLims);
+        clim(plotHandles(i,j),caxisLims);
     end
 end
 end
@@ -994,7 +1003,7 @@ end
 end
 function outString = getStringFromValues(valsUnique,decimationFactor)
 
-if length(valsUnique)==1
+if isscalar(valsUnique)
     outString = convertNumToStr(valsUnique(1),decimationFactor);
 else
     outString='';
