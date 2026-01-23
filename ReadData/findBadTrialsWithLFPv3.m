@@ -65,25 +65,30 @@ for i=1:numElectrodes
     nameElec{i} = ['elec' num2str(electrodeNum)];
     disp(nameElec{i});
     
-    analogDataSegment = analogData;
+    numCheckPeriods = length(checkPeriod);    
+    for j=1:numCheckPeriods
     % determine indices corresponding to the check period
-    checkPeriodIndices = timeVals>=checkPeriod(1) & timeVals<=checkPeriod(2);
+    checkPeriodIndices = timeVals>=checkPeriod(j,1) & timeVals<=checkPeriod(j,2);
     
-    analogData = analogData(:,checkPeriodIndices);
+    analogDataSegment = analogData(:,checkPeriodIndices); %#ok<USENS>
     % subtract dc
-    analogData = analogData - repmat(mean(analogData,2),1,size(analogData,2));
+    analogDataSegment = analogDataSegment - repmat(mean(analogDataSegment,2),1,size(analogDataSegment,2));
     
-    numTrials = size(analogData,1); %#ok<*NODEF>
-    meanData = mean(analogData,2)';
-    stdData  = std(analogData,[],2)';
-    maxData  = max(analogData,[],2)';
-    minData  = min(analogData,[],2)';
+    numTrials = size(analogDataSegment,1); %#ok<*NODEF>
+    meanData = mean(analogDataSegment,2)';
+    stdData  = std(analogDataSegment,[],2)';
+    maxData  = max(analogDataSegment,[],2)';
+    minData  = min(analogDataSegment,[],2)';
     
     clear tmpBadTrials tmpBadTrials2
     tmpBadTrials = unique([find(maxData > meanData + threshold * stdData) find(minData < meanData - threshold * stdData)]);
     tmpBadTrials2 = unique(find(maxData > maxLimit));
     tmpBadTrials3 = unique(find(minData < minLimit));
-    allBadTrials{electrodeNum} = unique([tmpBadTrials tmpBadTrials2 tmpBadTrials3]);
+    if electrodeNum > length(allBadTrials)
+        allBadTrials{electrodeNum} = [];
+    end
+    allBadTrials{electrodeNum} = unique([allBadTrials{electrodeNum} tmpBadTrials tmpBadTrials2 tmpBadTrials3]);
+    end
 end
 
 numElectrodes = length(checkTheseElectrodes); % check the list for these electrodes only to generate the overall badTrials list
