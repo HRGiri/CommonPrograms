@@ -23,7 +23,7 @@
 % Summary figure now displays the bad trials for 'CheckTheseElectrodes'
 % only.
 
-function [allBadTrials,badTrials] = findBadTrialsWithLFPv3New(monkeyName,expDate,protocolName,folderSourceString,gridType,checkTheseElectrodes,processAllElectrodes,threshold,maxLimit,minLimit,showElectrodes,saveDataFlag,checkPeriod,rejectTolerance,marginalsFlag,arrayString)
+function [allBadTrials,badTrials] = findBadTrialsWithLFPv3New(monkeyName,expDate,protocolName,folderSourceString,gridType,checkTheseElectrodes,processAllElectrodes,threshold,maxLimit,minLimit,showElectrodes,saveDataFlag,checkPeriod,rejectTolerance,marginalsFlag,arrayString,isApplyFilter)
 
 if ~exist('checkTheseElectrodes','var');     checkTheseElectrodes = [33 12 80 63 44];   end
 if ~exist('processAllElectrodes','var');     processAllElectrodes = 0;                  end
@@ -37,6 +37,7 @@ if ~exist('rejectTolerance','var');          rejectTolerance = 1;               
 if ~exist('showElectrodes','var');           showElectrodes = [];                       end
 if ~exist('marginalsFlag','var');            marginalsFlag = 0;                         end
 if ~exist('arrayString','var');              arrayString = [];                          end
+if ~exist('isApplyFilter','var');            isApplyFilter = 0;                         end
 folderName = fullfile(folderSourceString,'data',monkeyName,gridType,expDate,protocolName);
 folderSegment = fullfile(folderName,'segmentedData');
 
@@ -51,6 +52,7 @@ end
 allBadTrials = cell(1,numElectrodes);
 nameElec = cell(1,numElectrodes);
 
+filterStr = '';
 for i=1:numElectrodes
     if processAllElectrodes
         electrodeNum=analogChannelsStored(i); % changed from checkTheseElectrodes
@@ -60,10 +62,15 @@ for i=1:numElectrodes
         electrodeNum=checkTheseElectrodes(i);
     end
     load(fullfile(folderSegment,'LFP',['elec' num2str(electrodeNum) '.mat']));
-    
+
     disp(['Processing electrode: ' num2str(electrodeNum)]);
     nameElec{i} = ['elec' num2str(electrodeNum)];
     disp(nameElec{i});
+
+    if isApplyFilter
+        disp('Applying a 4th order Butterworth High pass filter with cutoff=3 Hz')
+        [analogData, filterStr] = applyFilter(analogData,2000,'butter','high',4,3);
+    end
     
     numCheckPeriods = length(checkPeriod);    
     for j=1:numCheckPeriods
@@ -184,7 +191,7 @@ end
 
 if saveDataFlag
     disp(['Saving ' num2str(length(badTrials)) ' bad trials']);
-    save(fullfile(folderSegment,['badTrials' arrayString '.mat']),'badTrials','checkTheseElectrodes','threshold','maxLimit','minLimit','checkPeriod','allBadTrials','nameElec','rejectTolerance','badElecs','badTrialsMarginalStats');
+    save(fullfile(folderSegment,['badTrials' arrayString '.mat']),'badTrials','checkTheseElectrodes','threshold','maxLimit','minLimit','checkPeriod','allBadTrials','nameElec','rejectTolerance','badElecs','badTrialsMarginalStats', 'filterStr');
 else
     disp('Bad trials will not be saved..');
 end
