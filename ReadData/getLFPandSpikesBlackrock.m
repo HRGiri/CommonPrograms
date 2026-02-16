@@ -24,19 +24,20 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function getLFPandSpikesBlackrock(subjectName,expDate,protocolName,folderSourceString,gridType,analogElectrodesToStore,neuralChannelsToStore,...
-    goodStimTimes,timeStartFromBaseLine,deltaT,Fs,hFile,getLFP,getSpikes,startLabelPosElec,startLabelPosChan)
+    goodStimTimes,timeStartFromBaseLine,deltaT,Fs,hFile,getLFP,getSpikes,getRaw,startLabelPosElec,startLabelPosChan)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Initialize %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if ~exist('hFile','var');        hFile = [];                            end
 if ~exist('getLFP','var');       getLFP=1;                              end
 if ~exist('getSpikes','var');    getSpikes=1;                           end
+if ~exist('getRaw','var');       getRaw=0;                              end
 if ~exist('startLabelPosElec','var');startLabelPosElec=5;               end
 if ~exist('startLabelPosChan','var');startLabelPosChan=5;               end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 fileName = [subjectName expDate protocolName '.nev'];
 folderName = fullfile(folderSourceString,'data',subjectName,gridType,expDate,protocolName);
 makeDirectory(folderName);
-folderIn = fullfile(folderSourceString,'data','rawData',[subjectName expDate]);
+folderIn = fullfile(folderSourceString,'rawData',subjectName,[subjectName expDate]);
 folderExtract = fullfile(folderName,'extractedData');
 makeDirectory(folderExtract);
 
@@ -56,7 +57,6 @@ if isempty(hFile)
 end
 
 % Load data file and display some info about the file open data file
-
 if ~isempty(hFile)
     % Get file information
     [nsresult, fileInfo] = ns_GetFileInfo(hFile);
@@ -79,6 +79,14 @@ else
     if (nsresult ~= 0)
         error('Data file information did not load!');
     end
+end
+
+if getRaw
+    % Open raw data file
+    rawFileName = [subjectName expDate protocolName '.ns6'];
+    cfg = [];
+    cfg.dataset = fullfile(folderIn,rawFileName);
+    rawHdr = ft_read_header(cfg.dataset);
 end
 
 % Build catalogue of entities
@@ -142,9 +150,9 @@ analysisOnsetTimes = goodStimTimes + timeStartFromBaseLine;
 if getLFP && (cAnalog>0)
     
     % Set appropriate time Range
-    numSamples = deltaT*Fs;
+    % numSamples = deltaT*Fs;
     timeVals = timeStartFromBaseLine+ (1/Fs:1/Fs:deltaT);
-
+    
     % The optional input analogChannelToStore contains the list of channels that
     % should be recorded
     
@@ -156,10 +164,11 @@ if getLFP && (cAnalog>0)
         else
             disp(['LFP from the specified ' num2str(length(analogElectrodesToStore)) ' electrodes and ' num2str(ainpCount) ' Ainp channels will be stored.']);
 
-            count=1;
+            count=1;            
             for i=1:length(analogElectrodesToStore)
                 % Check that the selected channel actually exist
                 findChannelLoc = find(electrodeNums == analogElectrodesToStore(i));
+                channelLocs(i) = findChannelLoc;
                 if isempty(findChannelLoc)
                     disp(['Analog Channel ' num2str(analogElectrodesToStore(i)) ' does not exist.']);
                 else
@@ -176,11 +185,17 @@ if getLFP && (cAnalog>0)
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % Prepare folders
     folderOut = fullfile(folderName,'segmentedData');
-    makeDirectory(folderOut); % main directory to store both LFP and spikes
+    makeDirectory(folderOut); % main directory to store LFP, spikes, and raw
 
     % Make Diectory for storing LFP data
     outputFolder = fullfile(folderOut,'LFP');
     makeDirectory(outputFolder);
+
+    % Make Directory for storing Raw data
+    if getRaw
+        rawDataFolder = fullfile(folderOut,'Raw');
+        makeDirectory(rawDataFolder);
+    end
 
     % Now segment and store data in the outputFolder directory
     totalStim = length(analysisOnsetTimes);
@@ -188,24 +203,47 @@ if getLFP && (cAnalog>0)
     for i=1:totalStim
         [~,goodStimPos(i)] = ns_GetIndexByTime(hFile,analogList(1),analysisOnsetTimes(i),-1);
     end
-
+    
+    if getRaw
+        % Get stimOn sample indices
+        goodStimPosRaw = analysisOnsetTimes * rawHdr.Fs;
+        goodStimPosRaw = round(goodStimPosRaw, TieBreaker="plusinf");
+        % goodStimPosRaw = goodStimPosRaw + 150;        % Need some delay in samples to match the LFP data (.ns3)
+        numSamplesRaw = deltaT * rawHdr.Fs;    
+        % Raw timeVals
+        timeValsRaw = timeStartFromBaseLine+ (1/rawHdr.Fs:1/rawHdr.Fs:deltaT);
+    end
     %%%%%%%%%%%%%%%%%%%%%%% Get data from electrodes %%%%%%%%%%%%%%%%%%%%%%
     if electrodeCount ~= 0
-        if cElectrodeListIDsStored > 0
+        if cElectrodeListIDsStored > 0            
             for i=1:cElectrodeListIDsStored
                 disp(['elec' num2str(electrodesStored(i))]);
 
                 clear analogInfo
                 [~, analogInfo] = ns_GetAnalogInfo(hFile, electrodeListIDsStored(i));
 
-                clear analogData
-                analogData = zeros(totalStim,numSamples);
+                clear analogData                
+                numSamples = deltaT * analogInfo.SampleRate;
+                analogData = zeros(totalStim,numSamples);                
                 for j=1:totalStim
                     [~, ~, analogData(j,:)] = ns_GetAnalogData(hFile, ...
-                        electrodeListIDsStored(i), goodStimPos(j)+1, numSamples);
+                        electrodeListIDsStored(i), goodStimPos(j)+1, numSamples);                    
                 end
-                save(fullfile(outputFolder,['elec' num2str(electrodesStored(i)) '.mat']),'analogData','analogInfo');
-            end
+                save(fullfile(outputFolder,['elec' num2str(electrodesStored(i)) '.mat']),'analogData','analogInfo');                  
+
+                % Read raw data from electrodes
+                if getRaw
+                    clear rawData
+                    clear rawDataAllChannels
+                    rawData = zeros(totalStim, numSamplesRaw);
+                    for j=1:totalStim
+                        rawDataAllChannels = ft_read_data(cfg.dataset,'header',rawHdr, ...
+                            'begsample',goodStimPosRaw(j)+1,'endsample',goodStimPosRaw(j)+numSamplesRaw);
+                        rawData(j,:) = rawDataAllChannels(channelLocs(electrodesStored(i)),:);
+                    end
+                    save(fullfile(rawDataFolder,['elec' num2str(electrodesStored(i)) '.mat']),'rawData');
+                end                
+            end            
         end
     end
     %%%%%%%%%%%%%%%%%%%%%%% Get analog input data %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -217,12 +255,26 @@ if getLFP && (cAnalog>0)
             [~, analogInfo] = ns_GetAnalogInfo(hFile, analogInputListIDs(i));
             
             clear analogData
+            numSamples = deltaT * analogInfo.SampleRate;
             analogData = zeros(totalStim,numSamples);
             for j=1:totalStim
                 [~, ~, analogData(j,:)] = ns_GetAnalogData(hFile, ...
-                    analogInputListIDs(i), goodStimPos(j)+1, numSamples);
+                    analogInputListIDs(i), goodStimPos(j)+1, numSamples);                
             end
-            save(fullfile(outputFolder,['ainp' num2str(analogInputNums(i)) '.mat']),'analogData','analogInfo');
+            save(fullfile(outputFolder,['ainp' num2str(analogInputNums(i)) '.mat']),'analogData','analogInfo');                        
+
+            % Read raw data from analog channels
+            if getRaw
+                clear rawData
+                clear rawDataAllChannels
+                rawData = zeros(totalStim, numSamplesRaw);
+                for j=1:totalStim                    
+                    rawDataAllChannels = ft_read_data(cfg.dataset,'header',rawHdr, ...
+                            'begsample',goodStimPosRaw(j)+1,'endsample',goodStimPosRaw(j)+numSamplesRaw);
+                    rawData(j,:) = rawDataAllChannels(96+analogInputNums(i),:);
+                end                         
+                save(fullfile(rawDataFolder,['ainp' num2str(analogInputNums(i)) '.mat']),'rawData');
+            end
         end
     else
         analogInputNums=[];
@@ -235,6 +287,9 @@ if getLFP && (cAnalog>0)
     end
     analogChannelsStored = electrodesStored;
     save(fullfile(outputFolder,'lfpInfo.mat'),'analogChannelsStored','electrodesStored','analogInputNums','goodStimPos','timeVals');
+    if getRaw
+        save(fullfile(rawDataFolder,'rawInfo.mat'),'rawHdr','electrodesStored','analogInputNums','goodStimPos','timeValsRaw');
+    end
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

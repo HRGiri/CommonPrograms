@@ -88,7 +88,7 @@ nameElec = cell(1,numElectrodes);
 hW1 = waitbar(0,'collecting data...');
 for i=1:numElectrodes
     if processAllElectrodes
-        iElec = electrodesStored(i);
+        iElec = lfpInfo.electrodesStored(i);
         waitbar((i-1)/numElectrodes,hW1,['collecting data from electrode: ' num2str(i) ' of ' num2str(numElectrodes)] );
         
         clear x; x = load(fullfile(folderSegment,'LFP',['elec' num2str(iElec) '.mat'])); % Load LFP Data
