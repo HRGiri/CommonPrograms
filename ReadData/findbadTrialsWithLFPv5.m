@@ -226,8 +226,10 @@ for iElec=1:numElectrodes
     
         % consolidate across checkPeriods
         badTrialsTimeThres = unique([badTrialsTimeThres(:); tmpBadTrialsTimeThres(:)]);  % badTrialstimeThres --> all bad trials that further fail Time Thresholding
-        
-     % 2.3 Frequency Thresholding
+       
+    end
+
+    % 2.3 Frequency Thresholding
         %%%%%%%%%%%%%%%%%%%%%%%% Set up MT parameters %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         Fs = 1/(timeVals(2) - timeVals(1)); %Hz
         
@@ -236,12 +238,127 @@ for iElec=1:numElectrodes
         params.Fs       = Fs;
         params.fpass    = [0 200];
         params.trialave = 0;
-
+        
+     badTrialsFreqThres = []; 
+         numPsdPeriods = size(checkPsdPeriod,1);
+    
+    for j = 1:numPsdPeriods
+        
+        % Get indices for PSD period
+        psdPeriodIndices = timeVals >= checkPsdPeriod(j,1) & ...
+                           timeVals <= checkPsdPeriod(j,2);
+                       
+        analogDataPsd = analogData(:, psdPeriodIndices);
+    
+      % Remove bad trials
+        analogDataPsd(badTrials1,:) = [];
+        analogDataPsd(badTrialsTimeThres,:) = [];
+    
+        % check PSD
+        clear powerVsFreq;
+        [powerVsFreq,~] = mtspectrumc(analogDataPsd',params);
+        powerVsFreq = powerVsFreq';
+        
+        numTrialsPsd = size(powerVsFreq, 1);  
+        clear meanTrialData stdTrialData tDplus
+        meanTrialData = nanmean(powerVsFreq, 1);  % calculate mean for remaining trials
+        stdTrialData = nanstd(powerVsFreq, [], 1); % calculate std for remaining trials
+        
+        tDplus = (meanTrialData + (psdThreshold)*stdTrialData);    % upper boundary/criterion
+    
+        clear tBoolTrials; tBoolTrials = sum((powerVsFreq > ones(numTrialsPsd,1)*tDplus),2);
+        clear tmpBadTrialsFreqThres; tmpBadTrialsFreqThres = find(tBoolTrials>0);
+    
+        badTrialsFreqThres = unique([badTrialsFreqThres(:); tmpBadTrialsFreqThres(:)]);
+    
     end
+  
+        % consolidate all bad trials
+    tmpBadTrialsAll = unique([badTrials1(:); badTrialsTimeThres(:); badTrialsFreqThres(:)]); 
+    % Remap bad trial indices to original indices
+        allBadTrials{iElec} = originalTrialInds(tmpBadTrialsAll);
+        % Calculate number of unique bad trials for each thresholding criterion
+        badTrialsUnique.rmsThres{iElec} = originalTrialInds(badTrials1);
+        badTrialsUnique.timeThres{iElec} = originalTrialInds(setdiff(badTrialsTimeThres,badTrials1));
+        badTrialsUnique.freqThres{iElec} = originalTrialInds(setdiff(badTrialsFreqThres,[badTrialsTimeThres; badTrials1]));
 
 end
-
 close(hW1);
 
 % decide what badTrials does
 badTrials = 0;    % placeholder value, might show some error if not declared
+
+% 3. Remove electrodes containing more than x% bad trials
+badTrialUL = (badTrialPercentageThreshold/100)*totalTrials;
+badTrialLength=cellfun(@length,allBadTrials);
+nBadElecs = logical(badTrialLength>badTrialUL)';
+allBadTrials(nBadElecs{2}) = {NaN};
+
+% 4. Find common bad trials across all electrodes subject to conditions
+commonBadTrialsAllElecs = trimBadTrials(allBadTrials);
+badTrialsUnique.commonBadTrialsAllElecs = commonBadTrialsAllElecs;
+
+% 5. PSD Slope calculation across baseline period
+checkPeriodIndicesPSD = timeVals>=checkPsdSlopePeriod(1) & timeVals<checkPsdSlopePeriod(2);
+params.tapers   = [(tapersPSD+1)/2 tapersPSD];
+slopeValsVsFreq = cell(1,numElectrodes);
+
+lfpData = lfpData(:,setdiff(originalTrialInds,tmpBadTrialsAll),checkPeriodIndicesPSD);
+for iElec=1:numElectrodes
+    if isnan(allBadTrials{1,iElec}); slopeValsVsFreq{iElec} = {NaN,NaN}; goodSlopeFlag(iElec) = false; continue; end %#ok<AGROW>
+    
+    % Computing slopes
+    analogDataPSD = squeeze(lfpData(iElec,:,:));
+    % analogDataPSD = analogDataPSD - repmat(mean(analogDataPSD,2),1,size(analogDataPSD,2));
+    
+    clear powerVsFreq freqVals
+    [powerVsFreq,freqVals] = mtspectrumc(analogDataPSD',params);
+    slopeValsVsFreq{iElec} = getSlopesPSDBaseline_v2((log10(mean(powerVsFreq,2)))',freqVals,slopeRange,[],freqsToAvoid);
+    goodSlopeFlag(iElec) = slopeValsVsFreq{iElec}{2}>0; %#ok<AGROW>
+end
+
+nanElecs = find(cell2mat(cellfun(@(x)any(isnan(x)),allBadTrials,'UniformOutput',false)));
+
+badElecs.flatPSDElecs = setdiff(find(~goodSlopeFlag),nanElecs)';
+badElecs.declaredBadElectrodes = badElectrodes;
+
+
+if saveDataFlag
+    disp(['Saving ' num2str(length(allBadTrials)) ' bad trials']);
+    badTrialsFileName = fullfile(folderSegment,['badTrials' badTrialNameStr '.mat']);
+    if exist(badTrialsFileName,'file'); delete(badTrialsFileName); end
+    save(badTrialsFileName,'badTrials','allBadTrials','badTrialsUnique','badElecs','totalTrials','slopeValsVsFreq','eegElectrodeLabels','highPriorityElectrodeList');
+else
+    disp('Bad trials will not be saved..');
+end
+
+if displayResultsFlag
+    displayBadElectrodes(subjectName,expDate,protocolName,folderSourceString,gridType,capType,badTrialNameStr);
+end
+end
+
+function [newBadTrials] =  trimBadTrials(allBadTrials)
+badElecThreshold = 10; % Percentage
+
+% 6. Removing common bad trials
+% 6.1. Taking union across bad electrodes for conditions 1 and 2
+newBadTrials=[];
+numElectrodes = length(allBadTrials);
+for iElec=1:numElectrodes
+    if ~isnan(allBadTrials{1,iElec}); newBadTrials=union(newBadTrials,allBadTrials{iElec}); end
+end
+
+% 6.2. Co-occurence condition - Counting the trials which occurs in more than x% of the electrodes
+badTrialElecs = zeros(1,length(newBadTrials));
+for iTrial = 1:length(newBadTrials)
+    for iElec = 1:numElectrodes
+        if isnan(allBadTrials{1,iElec}); continue; end % Discarding the electrodes where the bad trials are NaN because of this NaN entries in badTrials have zero in 'badTrialElecs'
+        if find(newBadTrials(iTrial)==allBadTrials{1,iElec})
+            badTrialElecs(iTrial) = badTrialElecs(iTrial)+1;
+        end
+    end
+end
+newBadTrials(badTrialElecs<(badElecThreshold/100.*numElectrodes))=[];
+end
+
+
