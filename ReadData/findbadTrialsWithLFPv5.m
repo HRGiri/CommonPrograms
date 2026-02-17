@@ -81,8 +81,9 @@ else % compute bad trials for only the electrodes mentioned
     numElectrodes = length(checkTheseElectrodes);
 end
 
-x = load(fullfile(folderSegment,'LFP',['elec' num2str(lfpInfo.electrodesStored(1)) '.mat'])); r = size(x.analogData, 1); c = size(x.analogData, 2); % get size of LFPdata for 1 electrode
-lfpData = zeros(numElectrodes, r, c); % initializing array to store LFP data corr. to all the electrodes
+x = load(fullfile(folderSegment,'LFP',['elec' num2str(lfpInfo.electrodesStored(1)) '.mat'])); 
+numTotalTrials = size(x.analogData, 1); numTotalSamples = size(x.analogData, 2); % get size of LFPdata for 1 electrode
+lfpData = zeros(numElectrodes, numTotalTrials, numTotalSamples); % initializing array to store LFP data corr. to all the electrodes
 nameElec = cell(1,numElectrodes);
 
 hW1 = waitbar(0,'collecting data...');
@@ -117,15 +118,6 @@ close(hW1);
 
 %
 
-%%%%%%%%%%%%%%%%%%%%%%%% Set up MT parameters %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-Fs = 1/(timeVals(2) - timeVals(1)); %Hz
-
-params.tapers   = [3 5];
-params.pad      = -1;
-params.Fs       = Fs;
-params.fpass    = [0 200];
-params.trialave = 0;
-
 %%%%%%%%%%%%%%%%%%%%% Applying Filter (if instructed) %%%%%%%%%%%%%%%%%%%%%
 if ~isempty(highPassCutOff)    % high pass filter    % can do this after the impedance check as well
     for i=1:numElectrodes
@@ -135,8 +127,7 @@ if ~isempty(highPassCutOff)    % high pass filter    % can do this after the imp
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% Bad Trial Analysis %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-totalTrials = size(lfpData,2);
-originalTrialInds = 1:totalTrials;
+originalTrialInds = 1:numTotalTrials;
 
 % 1. Get electrode impedances for rejecting noisy electrodes (impedance > ?k)
 
@@ -161,7 +152,7 @@ for iElec=1:numElectrodes
     % subtract dc
     % analogData = analogData - repmat(mean(analogData,2),1,size(analogData,2));
 
-    badTrials1 = []; badRmsTrials = []; noisyTrials = []; badMinValTrials = []; badMaxValTrials = []; badTrialsTimeThres = [];
+    badTimeTrials = []; badRmsTrials = []; noisyTrials = []; badMinValTrials = []; badMaxValTrials = []; badTrialsTimeThres = [];
     
     numCheckPeriods = size(checkPeriod, 1);    
     for j=1:numCheckPeriods
@@ -176,9 +167,9 @@ for iElec=1:numElectrodes
         meanData = mean(analogDataSegment,2)';
         stdData  = std(analogDataSegment,[],2)';
         maxData  = max(analogDataSegment,[],2)'; 
-        maxData(badTrials1) = meanData(badTrials1); % exclude trial indices already in badTrials1
+        maxData(badTimeTrials) = meanData(badTimeTrials); % exclude trial indices already in badTrials1
         minData  = min(analogDataSegment,[],2)';
-        minData(badTrials1) = meanData(badTrials1); % exclude trial indices already in badTrials1
+        minData(badTimeTrials) = meanData(badTimeTrials); % exclude trial indices already in badTrials1
    
         clear tmpNoisyTrials tmpBadMinValTrials tmpBadMaxValTrials
         tmpNoisyTrials = unique([find(maxData > meanData + timeThreshold * stdData) find(minData < meanData - timeThreshold * stdData)]);
@@ -195,7 +186,7 @@ for iElec=1:numElectrodes
         % calculate RMS Values for each trial
         if ~isempty(analogDataSegment)
             allTrialsRMS = sqrt(mean(analogDataSegment.^2, 2));
-            allTrialsRMS(badTrials1) = mean(rmsThreshold);        % exclude trial indices already in badTrials
+            allTrialsRMS(badTimeTrials) = mean(rmsThreshold);        % exclude trial indices already in badTrials
         else
             allTrialsRMS=[];
         end
@@ -211,18 +202,18 @@ for iElec=1:numElectrodes
         badRmsTrials = unique([badRmsTrials tmpBadRmsTrials]);
       
         % consolidate all bad trials till now (noisy, badMinVal, badMaxVal, badRms) 
-        badTrials1 = unique([noisyTrials(:); badMaxValTrials(:); badMinValTrials(:); badRmsTrials(:)]);  % badTrials1 --> all bad trials that fail Trial Thresholding
+        badTimeTrials = unique([noisyTrials(:); badMaxValTrials(:); badMinValTrials(:); badRmsTrials(:)]);  % badTrials1 --> all bad trials that fail Trial Thresholding
 
         % removing all bad Trials till now
         if ~isempty(analogDataSegment)
-            analogDataSegment(badTrials1,:) = [];
+            analogDataSegment(badTimeTrials,:) = [];
         end
 
      % 2.2 Time Thresholding
 
         numTrials = size(analogDataSegment, 1);                          % excluding badTrials1
-        meanTrialData = nanmean(analogDataSegment,1);                    % mean trial trace
-        stdTrialData = nanstd(analogDataSegment,[],1);                   % std across trials
+        meanTrialData = mean(analogDataSegment,1);                    % mean trial trace
+        stdTrialData = std(analogDataSegment,[],1);                   % std across trials
         
         tDplus = (meanTrialData + (timeThreshold)*stdTrialData);    % upper boundary/criterion   
         tDminus = (meanTrialData - (timeThreshold)*stdTrialData);   % lower boundary/criterion
@@ -237,15 +228,17 @@ for iElec=1:numElectrodes
         badTrialsTimeThres = unique([badTrialsTimeThres(:); tmpBadTrialsTimeThres(:)]);  % badTrialstimeThres --> all bad trials that further fail Time Thresholding
         
      % 2.3 Frequency Thresholding
-
+        %%%%%%%%%%%%%%%%%%%%%%%% Set up MT parameters %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        Fs = 1/(timeVals(2) - timeVals(1)); %Hz
+        
+        params.tapers   = [3 5];
+        params.pad      = -1;
+        params.Fs       = Fs;
+        params.fpass    = [0 200];
+        params.trialave = 0;
 
     end
 
-    % potential allBadTrials storing template
-    allBadTrials{iElec}.noisyTr = noisyTrials;
-    allBadTrials{iElec}.badMaxValTr = badMaxValTrials;
-    allBadTrials{iElec}.badMinValTr = badMinValTrials;
-    allBadTrials{iElec}.badTimeThres = badTrialsTimeThres;
 end
 
 close(hW1);
