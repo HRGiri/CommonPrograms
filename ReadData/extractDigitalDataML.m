@@ -41,8 +41,12 @@ end
 trialStartTimes    = trialResults(1).times;
 numTrials = length(trialStartTimes);
 
+% Check for contiguous stimOn indices
+stimOnIndices = find(allDigitalCodesInDec==MLCodeList.stimStart);
+contiguousStimOnIndices = 1 + find(diff(stimOnIndices)==1);
+stimOnIndices(contiguousStimOnIndices) = [];
 % Find the trial number of each stimulus
-stimOnTimes = timeStamps(allDigitalCodesInDec==MLCodeList.stimStart);
+stimOnTimes = timeStamps(stimOnIndices);
 numStims = length(stimOnTimes);
 trialNumOfEachStim = zeros(1,numStims);
 
@@ -62,6 +66,7 @@ goodTrials = find([data.TrialError]==0);
 
 conditionNumList = [];
 goodStimTimes = [];
+stimPosition = [];
 for i=1:length(goodTrials)
     trialNum = goodTrials(i);
     if isfield(data(trialNum).UserVars, "Stimuli")
@@ -70,45 +75,66 @@ for i=1:length(goodTrials)
         conditionNumList = cat(2,conditionNumList,data(trialNum).Condition); % Note that this only works when there is a single stimulus per trial
     end
     goodStimTimes = cat(2,goodStimTimes,stimOnTimes(trialNumOfEachStim==trialNum)');
+    stimPosition = cat(2, stimPosition, 1:length(stimOnTimes(trialNumOfEachStim==trialNum)'));
 end
-
+stimResults.stimPosition = stimPosition;
 % Set up dummy variables. Condition number is assigned to orientation
 numStimuli = length(conditionNumList);
 try
-    stimTable = x.TrialRecord.User.StimTable; % MODIFIED
+    stimTable = x.TrialRecord.User.StimTable; % MODIFIED    
     disp("Using stimTable to assign parameterCombinations")     
-    isMicrostim = ismember('microstim', stimTable.Properties.VariableNames) || ismember('amp', stimTable.Properties.VariableNames);        
-
-    if ~isMicrostim
-        stimResults.spatialFrequency = stimTable.sf(conditionNumList)';
-        stimResults.azimuth = stimTable.azi(conditionNumList)';
-        stimResults.elevation = stimTable.ele(conditionNumList)';
-        stimResults.sigma = stimTable.radii(conditionNumList)';
-        stimResults.radius = stimTable.radii(conditionNumList)';
-        stimResults.contrast = stimTable.con(conditionNumList)';
-        stimResults.temporalFrequency = zeros(1,numStimuli);
-        stimResults.orientation = stimTable.ori(conditionNumList)';
-    else
-        % Assiigning parameter combinations for microstimulation protocol
-        stimResults.spatialFrequency = stimTable.sf(conditionNumList)';
-        stimResults.sigma = stimTable.radii(conditionNumList)';
-        stimResults.radius = stimTable.radii(conditionNumList)';
-        stimResults.contrast = stimTable.con(conditionNumList)';        
-        stimResults.orientation = stimTable.ori(conditionNumList)';
-        stimResults.azimuth = stimTable.amp(conditionNumList)';
-        if ismember('duration', stimTable.Properties.VariableNames)
-            if stimTable.duration(1) ~= 0
-                stimResults.elevation = stimTable.frequency(conditionNumList)';
-                stimResults.temporalFrequency = stimTable.duration(conditionNumList)';
-            else
-                stimResults.elevation = stimTable.pulses(conditionNumList)';
-                stimResults.temporalFrequency = stimTable.frequency(conditionNumList)';
+    % Determine the protocol type
+    paramNames = {'width1','delay','width','amp','pulses','frequency'};      % Order matters here
+    protocolName = 'GRF';   
+    for i=1:length(paramNames)
+        if ismember(paramNames{i}, stimTable.Properties.VariableNames)
+            if length(unique(stimTable.(paramNames{i})(conditionNumList))) > 1
+                protocolName = paramNames{i};
+                break
             end
-        else
-            stimResults.elevation = stimTable.pulses(conditionNumList)';
-            stimResults.temporalFrequency = stimTable.frequency(conditionNumList)';
         end
     end
+    disp(['Identified Protocol: ' protocolName]) 
+
+    % Map to grating parameters
+    stimResults.spatialFrequency = stimTable.sf(conditionNumList)';
+    stimResults.radius = stimTable.radii(conditionNumList)';
+    stimResults.contrast = stimTable.con(conditionNumList)';        
+    stimResults.orientation = stimTable.ori(conditionNumList)';
+    stimResults.sigma = stimTable.radii(conditionNumList)';
+    stimResults.temporalFrequency = zeros(1,numStimuli);
+
+    switch protocolName
+        case 'GRF'                
+            stimResults.azimuth = stimTable.azi(conditionNumList)';
+            stimResults.elevation = stimTable.ele(conditionNumList)';            
+        case 'amp'        
+            stimResults.azimuth = stimTable.amp(conditionNumList)';
+            stimResults.elevation = stimTable.pulses(conditionNumList)';                
+            stimResults.temporalFrequency = stimTable.frequency(conditionNumList)';
+        case 'pulses'
+            stimResults.azimuth = stimTable.amp(conditionNumList)';
+            stimResults.elevation = stimTable.pulses(conditionNumList)';                
+            stimResults.temporalFrequency = stimTable.frequency(conditionNumList)';
+        case 'frequency'
+            stimResults.azimuth = stimTable.amp(conditionNumList)';
+            stimResults.elevation = stimTable.frequency(conditionNumList)';                
+            stimResults.temporalFrequency = stimTable.duration(conditionNumList)';
+        case 'width'
+            stimResults.azimuth = stimTable.width(conditionNumList)';
+            stimResults.elevation = stimTable.amp(conditionNumList)';                
+            stimResults.temporalFrequency = stimTable.frequency(conditionNumList)';
+        case 'width1'
+            stimResults.azimuth = stimTable.width1(conditionNumList)';
+            stimResults.elevation = stimTable.width2(conditionNumList)';                
+            stimResults.temporalFrequency = stimTable.frequency(conditionNumList)';
+        case 'delay'
+            stimResults.azimuth = stimTable.amp(conditionNumList)';
+            stimResults.elevation = stimTable.pulses(conditionNumList)';                
+            stimResults.temporalFrequency = stimTable.frequency(conditionNumList)';
+            stimResults.sigma = stimTable.delay(conditionNumList)';
+    end
+
 catch
     disp("No stimTable found. All stimuli are mapped to spatialFrequency")
     stimResults.spatialFrequency = conditionNumList;
