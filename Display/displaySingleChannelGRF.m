@@ -182,7 +182,7 @@ hTimingPanel = uipanel('Title','Timing','fontSize', fontSizeLarge, ...
 
 signalRange = [-0.2 1];
 fftRange = [0 100];
-baseline = [-0.6 -0.1];
+baseline = [-0.5 0];
 stimPeriod = [0.25 0.75];
 
 % Signal Range
@@ -297,20 +297,8 @@ hRemoveMeanSTA = uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
 % Stimulus Artifact Correction
 hRemoveERP = uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
     'BackgroundColor', backgroundColor, ...
-    'Position',[0 1-10*timingHeight 0.25 timingHeight], ...
+    'Position',[0 1-10*timingHeight 0.5 timingHeight], ...
     'Style','togglebutton','String','remove ERP','FontSize',fontSizeMedium);
-% SALPA (Subtraction of  Artifacts by Local Polynomial Approximation)
-uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
-    'Position',[0 1-2*timingHeight timingTextWidth timingHeight], ...
-    'Style','text','String','SALPA N','FontSize',fontSizeSmall);
-hSalpaN = uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
-    'BackgroundColor', backgroundColor, ...
-    'Position',[timingTextWidth+timingBoxWidth/2 1-2*timingHeight timingBoxWidth timingHeight], ...
-    'Style','edit','String',75,'FontSize',fontSizeSmall);
-hSALPA = uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
-    'BackgroundColor', backgroundColor, ...
-    'Position',[0.25 1-10*timingHeight 0.25 timingHeight], ...
-    'Style','togglebutton','String','SALPA','FontSize',fontSizeMedium);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -433,9 +421,7 @@ colormap jet
         stRange = [str2double(get(hStimPeriodMin,'String')) str2double(get(hStimPeriodMax,'String'))];
         staRange = [str2double(get(hSTAMin,'String')) str2double(get(hSTAMax,'String'))];
         holdOnState = get(hHoldOn,'val');
-        removeERPFlag = get(hRemoveERP,'val');
-        salpaN = str2double(get(hSalpaN,'String'));
-        salpaFlag = get(hSALPA, 'val');
+        removeERPFlag = get(hRemoveERP,'val');        
         removeMeanSTAFlag = get(hRemoveMeanSTA,'val');
         referenceChannelString = referenceChannelStringArray{get(hReferenceChannel,'val')};
 
@@ -484,17 +470,17 @@ colormap jet
             analogChannelPos = get(hAnalogChannel,'val');
             analogChannelString = analogChannelStringArray{analogChannelPos};
             rfMapVals = plotLFPData1Channel(plotHandles,analogChannelString,s,f,o,c,t,folderLFP,...
-                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag, salpaFlag, salpaN);
+                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag);
             plotLFPData1Parameter1Channel(hTemporalFreqPlot,analogChannelString,a,e,s,f,o,c,[],folderLFP,...
-                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag, salpaFlag, salpaN);
+                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag);
             plotLFPData1Parameter1Channel(hContrastPlot,analogChannelString,a,e,s,f,o,[],t,folderLFP,...
-                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag, salpaFlag, salpaN);
+                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag);
             plotLFPData1Parameter1Channel(hOrientationPlot,analogChannelString,a,e,s,f,[],c,t,folderLFP,...
-                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag, salpaFlag, salpaN);
+                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag);
             plotLFPData1Parameter1Channel(hSpatialFreqPlot,analogChannelString,a,e,s,[],o,c,t,folderLFP,...
-                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag, salpaFlag, salpaN);
+                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag);
             plotLFPData1Parameter1Channel(hSigmaPlot,analogChannelString,a,e,[],f,o,c,t,folderLFP,...
-                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag, salpaFlag, salpaN);
+                analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag);
 
             if analogChannelPos<=length(analogChannelsStored)
                 channelNumber = analogChannelsStored(analogChannelPos);
@@ -707,7 +693,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Main function that plots the data
 function rfMapVals = plotLFPData1Channel(plotHandles,channelString,s,f,o,c,t,folderLFP,...
-analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag, salpaFlag, salpaN)
+analysisType,timeVals,plotColor,blRange,stRange,folderName,sideChoice,referenceChannelString,badTrialNameStr,useCommonBadTrialsFlag,removeERPFlag)
 
 folderExtract = fullfile(folderName,'extractedData');
 folderSegment = fullfile(folderName,'segmentedData');
@@ -758,7 +744,7 @@ params.pad      = -1;
 params.Fs       = Fs;
 params.trialave = 1; %averaging across trials
 
-if removeERPFlag || salpaFlag
+if removeERPFlag
     useCommonBLFlag=0;
 else
     useCommonBLFlag=1;
@@ -771,11 +757,6 @@ if analysisType == 10
     signal = analogData(goodPos,:);
     if removeERPFlag
         signal = signal - repmat(mean(signal,1),size(signal,1),1);
-    end
-    if salpaFlag
-        for signal_idx = 1:size(signal,1)
-            signal(signal_idx,:) = applySALPA(signal(signal_idx,:), timeVals, salpaN);
-        end        
     end
     [S,timeTF] = mtspecgramc(signal',movingwin,params);
     xValToPlot = timeTF+timeVals(1)-1/Fs;
@@ -799,13 +780,7 @@ for i=1:numRows
         erp = mean(signal,1);
         if removeERPFlag
             signal = signal - repmat(erp,size(signal,1),1);            
-        end
-        if salpaFlag
-            for signal_idx = 1:size(signal,1)
-                signal(signal_idx,:) = applySALPA(signal(signal_idx,:), timeVals, salpaN);
-            end 
-            erp = mean(signal,1);
-        end
+        end        
 
         if isempty(goodPos)
             disp('No entries for this combination..');
@@ -1088,20 +1063,6 @@ for j=1:numCols
             defaultIfEmpty(t, length(tValsUnique))};
         erp = mean(analogData(ampPos,:),1);
         signal = signal - repmat(erp,size(signal,1),1);
-    end
-
-    if salpaFlag
-        for signal_idx = 1:size(signal,1)
-            signal(signal_idx,:) = applySALPA(signal(signal_idx,:), timeVals, salpaN);
-        end
-
-        % narrowSignal = downsample(signal', 2)';
-        % narrowTimeVals = downsample(timeVals, 2);
-        % for signal_idx = 1:size(signal,1)
-        %     clean_signal = applySALPA(narrowSignal(signal_idx,:), narrowTimeVals, salpaN);            
-        %     signal(signal_idx,:) = interp(clean_signal, 2);
-        % end
-        % erp = mean(signal,1);
     end
 
     if isempty(goodPos)
