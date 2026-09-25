@@ -24,7 +24,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function getLFPandSpikesBlackrock(subjectName,expDate,protocolName,folderSourceString,gridType,analogElectrodesToStore,neuralChannelsToStore,...
-    goodStimTimes,timeStartFromBaseLine,deltaT,Fs,hFile,getLFP,getSpikes,getRaw,startLabelPosElec,startLabelPosChan)
+    goodStimTimes,timeStartFromBaseLine,deltaT,Fs,hFile,getLFP,getSpikes,startLabelPosElec,startLabelPosChan,getRaw)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Initialize %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if ~exist('hFile','var');        hFile = [];                            end
@@ -207,8 +207,7 @@ if getLFP && (cAnalog>0)
     if getRaw
         % Get stimOn sample indices
         goodStimPosRaw = analysisOnsetTimes * rawHdr.Fs;
-        goodStimPosRaw = round(goodStimPosRaw, TieBreaker="plusinf");
-        % goodStimPosRaw = goodStimPosRaw + 150;        % Need some delay in samples to match the LFP data (.ns3)
+        goodStimPosRaw = round(goodStimPosRaw, TieBreaker="plusinf");        
         numSamplesRaw = deltaT * rawHdr.Fs;    
         % Raw timeVals
         timeValsRaw = timeStartFromBaseLine+ (1/rawHdr.Fs:1/rawHdr.Fs:deltaT);
@@ -233,15 +232,23 @@ if getLFP && (cAnalog>0)
 
                 % Read raw data from electrodes
                 if getRaw
-                    clear rawData
-                    clear rawDataAllChannels
-                    rawData = zeros(totalStim, numSamplesRaw);
-                    for j=1:totalStim
-                        rawDataAllChannels = ft_read_data(cfg.dataset,'header',rawHdr, ...
-                            'begsample',goodStimPosRaw(j)+1,'endsample',goodStimPosRaw(j)+numSamplesRaw);
-                        rawData(j,:) = rawDataAllChannels(channelLocs(electrodesStored(i)),:);
+                    % Look for the channel in the raw header file
+                    channelIndex = find(strcmp(...
+                        ['elec' num2str((electrodesStored(i)>48)+1) '-' num2str(electrodesStored(i))],...
+                        rawHdr.label(:)));
+                    if ~isempty(channelIndex)
+                        clear rawData
+                        clear rawDataAllChannels
+                        rawData = zeros(totalStim, numSamplesRaw);
+                        for j=1:totalStim
+                            rawDataAllChannels = ft_read_data(cfg.dataset,'header',rawHdr, ...
+                                'begsample',goodStimPosRaw(j)+1,'endsample',goodStimPosRaw(j)+numSamplesRaw);
+                            rawData(j,:) = rawDataAllChannels(channelIndex,:);
+                        end
+                        save(fullfile(rawDataFolder,['elec' num2str(electrodesStored(i)) '.mat']),'rawData');
+                    else
+                        disp(['Raw data not recorded for elec ' num2str(electrodesStored(i))])
                     end
-                    save(fullfile(rawDataFolder,['elec' num2str(electrodesStored(i)) '.mat']),'rawData');
                 end                
             end            
         end
@@ -265,15 +272,24 @@ if getLFP && (cAnalog>0)
 
             % Read raw data from analog channels
             if getRaw
-                clear rawData
-                clear rawDataAllChannels
-                rawData = zeros(totalStim, numSamplesRaw);
-                for j=1:totalStim                    
-                    rawDataAllChannels = ft_read_data(cfg.dataset,'header',rawHdr, ...
-                            'begsample',goodStimPosRaw(j)+1,'endsample',goodStimPosRaw(j)+numSamplesRaw);
-                    rawData(j,:) = rawDataAllChannels(96+analogInputNums(i),:);
-                end                         
-                save(fullfile(rawDataFolder,['ainp' num2str(analogInputNums(i)) '.mat']),'rawData');
+                % Look for the channel in the raw header file
+                channelIndex = find(strcmp(...
+                    ['ainp' num2str(analogInputNums(i))],...
+                    rawHdr.label(:)),1);
+                if ~isempty(channelIndex)
+                    disp('Extracting raw (.ns6) data')
+                    clear rawData
+                    clear rawDataAllChannels
+                    rawData = zeros(totalStim, numSamplesRaw);
+                    for j=1:totalStim                    
+                        rawDataAllChannels = ft_read_data(cfg.dataset,'header',rawHdr, ...
+                                'begsample',goodStimPosRaw(j)+1,'endsample',goodStimPosRaw(j)+numSamplesRaw);
+                        rawData(j,:) = rawDataAllChannels(channelIndex,:);
+                    end                         
+                    save(fullfile(rawDataFolder,['ainp' num2str(analogInputNums(i)) '.mat']),'rawData');
+                else
+                    disp(['Raw data not recorded for ainp' num2str(analogInputNums(i))])
+                end
             end
         end
     else

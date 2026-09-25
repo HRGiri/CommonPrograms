@@ -30,10 +30,11 @@ makeDirectory(folderExtract);
 % Read the NEV file
 
 % Load the appropriate DLL
-% dllName = fullfile(removeIfPresent(fileparts(mfilename('fullpath')), ...
-% fullfile('Programs','ProgramsMAP','CommonPrograms','ReadData')),'SoftwareMAP','NeuroShare','nsNEVLibrary64.dll');
-programsFolder = 'C:\Users\SRAY LAB\Documents\MATLAB\Programs';
-dllName = fullfile(programsFolder,'SoftwareMAP','NeuroShare','nsNEVLibrary64.dll');
+neuroshareFilePath = which('ns_SetLibrary');
+if isempty(neuroshareFilePath);     error('Neuroshare not found or not in path!'); end
+
+[dllFolder, ~, ~] = fileparts(neuroshareFilePath);  % Assuming Neuroshare is above fieldtrip on your path
+dllName = fullfile(dllFolder, 'nsNEVLibrary64.dll');
 
 [nsresult] = ns_SetLibrary(dllName);
 if (nsresult ~= 0);      error('DLL was not found!');                   end
