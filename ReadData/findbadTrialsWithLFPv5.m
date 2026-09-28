@@ -11,7 +11,7 @@
 % 2. Bad trial percentage on that electrode
 % 3. Average PSD slope in a certain range
 
-function [allBadTrials,badTrials, badTrialsUnique, badElecs] = findbadTrialsWithLFPv5(monkeyName,expDate,protocolName,folderSourceString, opts)
+function [allBadTrials,badTrials, badTrialsUnique, badElecs, allBadElecs] = findbadTrialsWithLFPv5(monkeyName,expDate,protocolName,folderSourceString, opts)
 
 % Defining named arguments here so that optional arguments can be provided
 % using the name of the argument
@@ -37,6 +37,7 @@ arguments
     opts.marginalsFlag logical = 0;
     opts.saveDataFlag logical = 0;
     opts.badTrialNameStr char = '_v5';                  % string to be added to the bad trial file name
+    opts.showPlot logical = 0;
 end
 
 gridType = opts.gridType;
@@ -56,6 +57,7 @@ showElectrodes = opts.showElectrodes;
 marginalsFlag = opts.marginalsFlag;
 saveDataFlag = opts.saveDataFlag;
 badTrialNameStr = opts.badTrialNameStr;
+showPlot = opts.showPlot;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Initializations %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 impedanceCutOff = 3000; % KOhm
@@ -261,6 +263,12 @@ for iElec=1:numElectrodes
 end
 close(hW1);
 
+% Bad Trials Matrix for plotting
+allBadTrialsMatrix = zeros(length(allBadTrials),numTrials);
+for i=1:length(allBadTrials)
+    allBadTrialsMatrix(i,allBadTrials{i}) = 1;    
+end
+
 % 3. Remove electrodes containing more than x% bad trials
 badTrialUL = (badTrialPercentageThreshold/100)*numTotalTrials;
 badTrialLength=cellfun(@length,allBadTrials);
@@ -293,8 +301,10 @@ end
 
 nanElecs = find(cell2mat(cellfun(@(x)any(isnan(x)),allBadTrials,'UniformOutput',false)));
 
-badElecs.noisyElecs = checkTheseElectrodes(noisyElecs);
-badElecs.flatPSDElecs = setdiff(find(~goodSlopeFlag),nanElecs)';
+allBadElecs.noisyElecs = checkTheseElectrodes(noisyElecs);
+allBadElecs.flatPSDElecs = setdiff(find(~goodSlopeFlag),nanElecs)';
+
+badElecs = union(allBadElecs.noisyElecs, allBadElecs.flatPSDElecs);
 
 if saveDataFlag
     disp(['Saving ' num2str(length(badTrials)) ' bad trials']);
@@ -314,12 +324,85 @@ if saveDataFlag
     badTrialParameters.badTrialPercentageThreshold = badTrialPercentageThreshold;    
 
     save(badTrialsFileName,'badTrials','allBadTrials','badTrialsUnique',...
-        'badElecs','numTotalTrials','slopeValsVsFreq','nameElec','badTrialParameters');
+        'badElecs','allBadElecs','numTotalTrials','slopeValsVsFreq','nameElec','badTrialParameters');
 else
     disp('Bad trials will not be saved..');
 end
 
-% TODO: Summary Plot
+
+%**************************************************************************
+% summary plot
+%--------------------------------------------------------------------------
+lengthShowElectrodes = length(showElectrodes);
+if ~isempty(showElectrodes)
+    for i=1:lengthShowElectrodes
+        figure;
+        subplot(2,1,1);
+        channelNum = showElectrodes(i);
+
+        clear signal analogData analogDataSegment
+        analogData = load(fullfile(folderSegment,'LFP',['elec' num2str(channelNum) '.mat'])).analogData;
+        analogDataSegment = analogData;
+        if numTrials<4000
+            plot(timeVals,analogDataSegment(setdiff(1:numTrials,badTrials),:),'color','k');
+            hold on;
+        else
+            disp('More than 4000 trials...');
+        end
+        if ~isempty(badTrials)
+            plot(timeVals,analogDataSegment(badTrials,:),'color','g');
+        end
+        title(['electrode ' num2str(channelNum)]);
+        axis tight;
+
+        subplot(2,1,2);
+        plot(timeVals,analogDataSegment(setdiff(1:numTrials,badTrials),:),'color','k');
+        hold on;
+        j = find(checkTheseElectrodes == channelNum);
+        if ~isempty(allBadTrials{j})
+            plot(timeVals,analogDataSegment(allBadTrials{j},:),'color','r');
+        end
+        axis tight;
+    end
+end
+
+if showPlot
+    summaryFig = figure('name',[monkeyName expDate protocolName],'numbertitle','off');
+    h0 = subplot('position',[0.8 0.8 0.18 0.18]); set(h0,'visible','off');
+    text(0.05, 0.7, ['thresholds (uV): [' num2str(minLimit) ' ' num2str(maxLimit) ']'],'fontsize',12,'unit','normalized','parent',h0);
+    checkPeriodString = '';
+    for i=1:numCheckPeriods
+        checkPeriodString = [checkPeriodString ' [' num2str(checkPeriod(i,1)) ' ' num2str(checkPeriod(i,2)) ']']; %#ok<AGROW>
+    end
+    text(0.05, 0.4, ['checkPeriod (s): ' checkPeriodString],'fontsize',12,'unit','normalized','parent',h0);
+    % text(0.05, 0.1, ['rejectTolerance : ' num2str(rejectTolerance)],'fontsize',12,'unit','normalized','parent',h0);
+    
+    h1 = getPlotHandles(1,1,[0.07 0.07 0.7 0.7]);
+    subplot(h1);
+    imagesc(1:numTrials,flip(checkTheseElectrodes),flipud(allBadTrialsMatrix),'parent',h1);
+    set(gca,'YDir','normal','ylim',[checkTheseElectrodes(1) checkTheseElectrodes(end)]); colormap(gray);
+    xlabel('# trial num','fontsize',15,'fontweight','bold');
+    ylabel('# electrode num','fontsize',15,'fontweight','bold');
+    
+    h2 = getPlotHandles(1,1,[0.07 0.8 0.7 0.17]);
+    h3 = getPlotHandles(1,1,[0.8 0.07 0.18 0.7]);
+    subplot(h2); cla; set(h2,'nextplot','add');
+    stem(h2,1:numTrials,sum(allBadTrialsMatrix,1)); axis('tight');
+    ylabel('#count');
+    if ~isempty(badTrials)
+        stem(h2,badTrials,sum(allBadTrialsMatrix(:,badTrials),1),'color','r');
+    end
+    subplot(h3); cla; set(h3,'nextplot','add');
+    stem(h3,checkTheseElectrodes,sum(allBadTrialsMatrix,2)); axis('tight'); ylabel('#count');
+    if ~isempty(badElecs)
+        stem(h3,badElecs,sum(allBadTrialsMatrix(checkTheseElectrodes == badElecs,:),2),'color','r');
+    end
+    xlim(h3,[checkTheseElectrodes(1) checkTheseElectrodes(end)]);
+    view([90 -90]);
+    
+    saveas(summaryFig,fullfile(folderSegment,[monkeyName expDate protocolName 'summmaryBadTrials' badTrialNameStr '.fig']),'fig');
+end
+
 end
 
 function [newBadTrials] =  trimBadTrials(allBadTrials)
